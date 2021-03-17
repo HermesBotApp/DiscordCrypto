@@ -1,0 +1,4 @@
+main: fr.blueberry.studio.hermes.plugins.discordCrypto.DiscordCrypto
+name: DiscordCrypto
+version: 1.0
+author: Grimille
