@@ -1,71 +1,74 @@
 package fr.blueberry.studio.hermes.plugins.discordCrypto.core;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
-import java.util.HashSet;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.Set;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.reflect.TypeToken;
 
 import fr.blueberry.studio.hermes.plugins.discordCrypto.core.tokens.Asset;
-import fr.blueberry.studio.hermes.plugins.discordCrypto.core.tokens.CryptoCurrency;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 public class CoinAPI {
-    private final Gson gson;
-    private final String apiKey;
-    private final OkHttpClient client;
-    private final Set<Asset> assets;
+    public static final DecimalFormat MONEY_VALUE_FORMATTER = new DecimalFormat("#.####");
 
-    public CoinAPI(String apiKey) {
+    private final Gson gson;
+    private final OkHttpClient client;
+
+    public CoinAPI() {
         this.gson = new Gson();
-        this.apiKey = apiKey;
         this.client = new OkHttpClient();
-        this.assets = this.loadAssets();
     }
 
-    private String request(String url) throws IOException {
-        final Request request = new Request.Builder()
-            .url("http://rest-sandbox.coinapi.io" + url)
-            .addHeader("X-CoinAPI-Key", apiKey)
+    @SuppressWarnings("unused")
+    private String request(String url) {
+        return request(url, null);
+    }
+
+    private String request(String url, String args) {
+        try {
+            final Request request = new Request.Builder()
+            .url("https://api.coincap.io/v2" + url + (args != null ? "?" + args : ""))
+            .method("GET", null)
             .build();
         
-        final Response response = client.newCall(request).execute();
-        final ResponseBody body = response.body();
+            final Response response = client.newCall(request).execute();
+            final ResponseBody body = response.body();
 
-        return body.string();
+            return body.string();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
+        return "{}";
     }
 
-    private Set<Asset> loadAssets() {
-        try {
-            final Set<Asset> assets = new HashSet<>();
-            final String json = request("/v1/assets/icons/128");
-            final JsonArray assetJsonArray = this.gson.fromJson(json, JsonArray.class);
-            final Iterator<JsonElement> it = assetJsonArray.iterator();
+    public Asset retrieveAsset(String search) {
+        final String json = request("/assets", "limit=1&search=" + search);
+        final ArrayList<Asset> assets = parseAssets(json);
 
-            JsonElement element;
-            while(it.hasNext()) {
-                element = it.next();
+        return assets.size() > 0 ? assets.get(0) : null;
+    }
 
-                if(element.isJsonObject()) {
-                    JsonObject jsonObject = element.getAsJsonObject();
+    public ArrayList<Asset> searchAssets(String search) {
+        final String json = request("/assets", "&search=" + search);
+        final ArrayList<Asset> assets = parseAssets(json);
 
-                    assets.add(new Asset(jsonObject.get("asset_id").getAsString(), jsonObject.get("url").getAsString()));
-                }
-            }
+        return assets;
+    }
 
-            return assets;
-        } catch(IOException e) {
-            return new HashSet<>();
-        }
+    public ArrayList<Asset> retrieveTop() {
+        final String json = request("/assets", "limit=9");
+        final ArrayList<Asset> assets = parseAssets(json);
+        
+        return assets;
     }
 
     public void close() {
@@ -73,32 +76,26 @@ public class CoinAPI {
         this.client.connectionPool().evictAll();
     }
 
-    public CryptoCurrency getCrypto(String assetId) {
-        try {
-            final String json = request("/v1/assets/" + assetId);
-            final JsonObject jsonObject = this.gson.fromJson(json, JsonArray.class).get(0).getAsJsonObject();
-            System.out.println(json);
-            final CryptoCurrency cryptoCurrency = new CryptoCurrency(jsonObject.get("asset_id").getAsString(), jsonObject.get("name").getAsString(), jsonObject.get("price_usd").getAsDouble());
+    private ArrayList<Asset> parseAssets(String json) {
+        final JsonObject root = this.gson.fromJson(json, JsonObject.class);
+        final ArrayList<Asset> assets = new ArrayList<>();
+
+        if(root.has("data")) {
+            final JsonArray data = root.get("data").getAsJsonArray();
+            final Iterator<JsonElement> it = data.iterator();
             
-            return cryptoCurrency;
-        } catch (IOException e) {
-            return null;
-        }
-    }
+            while(it.hasNext()) {
+                final JsonObject dataEntry = it.next().getAsJsonObject();
+                final String id = dataEntry.get("id").getAsString();
+                final String name = dataEntry.get("name").getAsString();
+                final String symbol = dataEntry.get("symbol").getAsString();
+                final double priceUsd = !dataEntry.get("priceUsd").isJsonNull() ? dataEntry.get("priceUsd").getAsDouble() : 0.0D;
+                final Asset asset = new Asset(id, symbol, name, priceUsd);
 
-    public Set<Asset> getAssets() {
+                assets.add(asset);
+            }
+        } 
+
         return assets;
-    }
-
-    public String getSymbols() {
-        try {
-            return request("/v1/symbols");
-        } catch(IOException e) {
-            return "{}";
-        }
-    }
-
-    public Asset getAsset(String assetId) {
-        return this.assets.stream().filter(a -> a.getAssetId().toUpperCase().equals(assetId.toUpperCase())).findFirst().get();
     }
 }

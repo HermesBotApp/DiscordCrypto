@@ -11,7 +11,7 @@ public class DiscordCrypto extends Plugin {
     @Override
     public void onLoad() {
         INSTANCE = this;
-        COIN_API = new CoinAPI("C48D77B2-1B6F-4E52-B55F-6B9B8A682F0E");
+        COIN_API = new CoinAPI();
     }
 
     @Override
